@@ -23,6 +23,10 @@ public class SecurityConfig {
                                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-resources/**", "/webjars/**").permitAll()
                                 .anyRequest().authenticated()
                 )
+                .formLogin(formLogin -> formLogin
+                    .loginPage("/login")
+                        .permitAll()
+                )
                 .httpBasic(withDefaults()) // 기본 인증 설정
                 .csrf(csrf -> csrf.disable());
 
@@ -35,6 +39,10 @@ public class SecurityConfig {
         manager.createUser(User.withUsername("eunbi")
                 .password("{noop}kim")
                 .roles("USER")
+                .build());
+        manager.createUser(User.withUsername("admin")
+                .password("{noop}admin")
+                .roles("ADMIN")
                 .build());
         return manager;
     }
