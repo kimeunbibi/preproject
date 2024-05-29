@@ -1,6 +1,8 @@
-package com.example.demo;
+package com.example.demo.config;
 
-import com.example.demo.Entity.Person;
+import com.example.demo.listener.JobCompletionNotificationListener;
+import com.example.demo.model.Person;
+import com.example.demo.processor.PersonItemProcessor;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
@@ -10,11 +12,10 @@ import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
-import org.springframework.batch.item.database.builder.JdbcBatchItemWriterBuilder;
 import org.springframework.batch.item.file.FlatFileItemReader;
-import org.springframework.batch.item.file.FlatFileItemWriter;
 import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
 import org.springframework.batch.item.file.mapping.BeanWrapperFieldSetMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
@@ -24,37 +25,30 @@ import javax.sql.DataSource;
 
 @Configuration
 @EnableBatchProcessing
-public class BatchConfiguration {
+public class BatchConfig {
+    @Autowired
+    public JobRepository jobRepository;
+    @Autowired
+    public PlatformTransactionManager transactionManager;
+    @Autowired
+    public DataSource dataSource;
 
-    private final JobRepository jobRepository;
-    private final PlatformTransactionManager transactionManager;
-
-    public BatchConfiguration(JobRepository jobRepository, PlatformTransactionManager transactionManager) {
-        this.jobRepository = jobRepository;
-        this.transactionManager = transactionManager;
-    }
-
-    // CVS 파일에서 Person 객체를 읽기 위한 설정
     @Bean
     public FlatFileItemReader<Person> reader(){
         return new FlatFileItemReaderBuilder<Person>()
                 .name("personItemReader")
                 .resource(new ClassPathResource("sample-data.csv"))
                 .delimited()
-                .names(new String[]{"firstName", "lastName"})
-                .fieldSetMapper(new BeanWrapperFieldSetMapper<Person>(){{
+                .names(new String[]{"firstName", "lastName", "email"})
+                .fieldSetMapper(new BeanWrapperFieldSetMapper<Person>() {{
                     setTargetType(Person.class);
                 }})
                 .build();
     }
 
     @Bean
-    public JdbcBatchItemWriter<Person> writer(DataSource dataSource){
-        return new JdbcBatchItemWriterBuilder<Person>()
-                .itemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<>())
-                .sql("INSERT INTO person (first_name, last_name) VALUES (:firstName, :lastName)")
-                .dataSource(dataSource)
-                .build();
+    public PersonItemProcessor processor(){
+        return new PersonItemProcessor();
     }
 
     @Bean
@@ -67,16 +61,22 @@ public class BatchConfiguration {
     }
 
     @Bean
-    public Step step1() {
+    public JdbcBatchItemWriter<Person> writer(){
+        JdbcBatchItemWriter<Person> writer = new JdbcBatchItemWriter<>();
+        writer.setItemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<>());
+        writer.setSql("INSERT INTO people (first_name, last_name, email) VALUES (:firstName, :lastName, :email)");
+        writer.setDataSource(dataSource);
+        return writer;
+
+    }
+
+    @Bean
+    public Step step1(){
         return new StepBuilder("step1", jobRepository)
                 .<Person, Person>chunk(10, transactionManager)
                 .reader(reader())
-                .writer(writer(null))
+                .processor(processor())
+                .writer(writer())
                 .build();
     }
-
-    private Object setTargetType(Class<Person> personClass) {
-        return null;
-    }
 }
-
